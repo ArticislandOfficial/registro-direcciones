@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-slate-50">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Registro de Direcciones | Integración Google Maps & Sheets</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0f7ff',
+              100: '#e0effe',
+              500: '#2563eb',
+              600: '#1d4ed8',
+              700: '#1e40af',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  
+  <!-- FontAwesome & Google Fonts -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body class="h-full font-sans text-slate-800 antialiased selection:bg-brand-500 selection:text-white flex flex-col">
+
+  <!-- Notification Toast Container -->
+  <div id="toastContainer" class="fixed top-5 right-5 z-50 flex flex-col space-y-2 pointer-events-none"></div>
+
+  <!-- Header -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-blue-400 flex items-center justify-center text-white shadow-md shadow-brand-500/20">
+          <i class="fa-solid fa-map-location-dot text-lg"></i>
+        </div>
+        <div>
+          <h1 class="text-lg font-bold text-slate-900 leading-tight">Registro de Ubicaciones</h1>
+          <p class="text-xs text-slate-500">Formulario Unificado & Sync Cloud</p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-2">
+        <button onclick="exportToJSON()" class="px-3 py-1.5 border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 shadow-sm">
+          <i class="fa-solid fa-file-export text-slate-500"></i>
+          <span class="hidden sm:inline">Exportar JSON</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+
+    <!-- Registration Card -->
+    <section class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div class="p-6 border-b border-slate-100 bg-slate-50/50">
+        <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+          <i class="fa-solid fa-pen-to-square text-brand-600"></i>
+          Ingresa la Información de la Dirección
+        </h2>
+        <p class="text-xs text-slate-500 mt-1">Es obligatorio proporcionar tanto la URL de Google Maps como la dirección escrita detallada.</p>
+      </div>
+
+      <form id="addressForm" class="p-6 space-y-6">
+        
+        <!-- SECTION 1: Google Maps Link (Mandatory) -->
+        <div class="bg-blue-50/50 rounded-xl p-4 border border-blue-100 space-y-3">
+          <label for="mapsUrl" class="block text-xs font-bold text-slate-800 uppercase tracking-wider">
+            1. Enlace de Google Maps <span class="text-red-500">*</span>
+          </label>
+          <div class="flex flex-col sm:flex-row gap-2">
+            <div class="relative flex-1">
+              <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                <i class="fa-solid fa-link"></i>
+              </div>
+              <input type="url" id="mapsUrl" required placeholder="https://maps.app.goo.gl/... o https://google.com/maps/..." class="w-full pl-9 pr-8 py-2.5 bg-white text-xs sm:text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all">
+              <button type="button" id="clearLinkBtn" onclick="clearLinkInput()" class="hidden absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+            <button type="button" onclick="extractAndPreview()" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-semibold transition-all shadow-sm flex items-center justify-center space-x-1.5 shrink-0">
+              <i class="fa-solid fa-magnifying-glass-location"></i>
+              <span>Procesar & Previsualizar</span>
+            </button>
+          </div>
+          
+          <div id="linkError" class="hidden text-xs text-red-600 flex items-center gap-1.5 font-medium">
+            <i class="fa-solid fa-circle-exclamation"></i>
+            <span id="linkErrorMsg">Ingresa un enlace válido de Google Maps.</span>
+          </div>
+
+          <!-- Map Preview Sub-container -->
+          <div id="mapPreviewContainer" class="hidden pt-2 space-y-2">
+            <div class="flex items-center justify-between text-xs text-slate-600">
+              <span id="extractedCoordinatesText" class="font-mono bg-white px-2 py-0.5 rounded border border-slate-200"></span>
+              <button type="button" onclick="toggleMapExpand()" class="text-brand-600 font-medium hover:underline text-[11px]">
+                <i class="fa-solid fa-expand mr-1"></i>Agrandar vista
+              </button>
+            </div>
+            <div id="mapFrameWrapper" class="h-56 w-full rounded-xl overflow-hidden border border-slate-300 bg-slate-100 shadow-inner transition-all duration-300">
+              <iframe id="mapIframe" class="w-full h-full border-0" loading="lazy" allowfullscreen src=""></iframe>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION 2: Manual Address Data (Mandatory Fields) -->
+        <div class="space-y-4">
+          <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider border-b border-slate-100 pb-2">
+            2. Detalle de la Dirección Escrita
+          </h3>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="sm:col-span-2 space-y-1">
+              <label for="labelName" class="block text-xs font-medium text-slate-700">Nombre / Identificador <span class="text-red-500">*</span></label>
+              <input type="text" id="labelName" required placeholder="Ej: Sucursal Centro, Bodega Principal, Casa" class="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 focus:outline-none">
+            </div>
+            <div class="space-y-1">
+              <label for="locationType" class="block text-xs font-medium text-slate-700">Tipo de Inmueble</label>
+              <select id="locationType" class="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 focus:outline-none bg-white">
+                <option value="Residencial / Casa">Residencial / Casa</option>
+                <option value="Trabajo / Oficina">Trabajo / Oficina</option>
+                <option value="Comercial / Tienda">Comercial / Tienda</option>
+                <option value="Almacén / Bodega">Almacén / Bodega</option>
+                <option value="Otro">Otro</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <div class="sm:col-span-2 space-y-1">
+              <label for="street" class="block text-xs font-medium text-slate-700">Calle / Avenida <span class="text-red-500">*</span></label>
+              <input type="text" id="street" required placeholder="Ej: Av. Paseo de la Reforma" class="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 focus:outline-none">
+            </div>
+            <div class="space-y-1">
+              <label for="extNumber" class="block text-xs font-medium text-slate-700">Núm. Exterior <span class="text-red-500">*</span></label>
+              <input type="text" id="extNumber" required placeholder="Ej: 123" class="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 focus:outline-none">
+            </div>
+            <div class="space-y-1">
+              <label for="intNumber" class="block text-xs font-medium text-slate-700">Núm. Interior</label>
+              <input type="text" id="intNumber" placeholder="Ej: Piso 4, B-10" class="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 focus:outline-none">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="space-y-1">
+              <label for="neighborhood" class="block text-xs font-medium text-slate-700">Colonia / Bario <span class="text-red-500">*</span></label>
+              <input type="text" id="neighborhood" required placeholder="Ej: Juárez" class="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 focus:outline-none">
+            </div>
+            <div class="space-y-1">
+              <label for="zipCode" class="block text-xs font-medium text-slate-700">Código Postal <span class="text-red-500">*</span></label>
+              <input type="text" id="zipCode" required placeholder="Ej: 06600" class="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 focus:outline-none">
+            </div>
+            <div class="space-y-1">
+              <label for="city" class="block text-xs font-medium text-slate-700">Ciudad / Alcaldía <span class="text-red-500">*</span></label>
+              <input type="text" id="city" required placeholder="Ej: Cuauhtémoc" class="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 focus:outline-none">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="space-y-1">
+              <label for="state" class="block text-xs font-medium text-slate-700">Estado / Provincia <span class="text-red-500">*</span></label>
+              <input type="text" id="state" required placeholder="Ej: CDMX" class="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 focus:outline-none">
+            </div>
+            <div class="sm:col-span-2 space-y-1">
+              <label for="references" class="block text-xs font-medium text-slate-700">Referencias de Entrega</label>
+              <input type="text" id="references" placeholder="Ej: Portón blanco, entre calle A y calle B" class="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 focus:outline-none">
+            </div>
+          </div>
+        </div>
+
+        <!-- Submit Button -->
+        <div class="pt-4 border-t border-slate-100 flex justify-end">
+          <button type="submit" class="w-full sm:w-auto px-6 py-3 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-md shadow-brand-500/20 flex items-center justify-center space-x-2">
+            <i class="fa-solid fa-cloud-arrow-up"></i>
+            <span>Guardar Dirección & Sincronizar</span>
+          </button>
+        </div>
+
+      </form>
+    </section>
+
+    <!-- Registered Records List Section -->
+    <section class="space-y-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+            <span>Registros Guardados</span>
+            <span id="recordCounter" class="bg-brand-50 text-brand-700 text-xs px-2.5 py-0.5 rounded-full font-bold border border-brand-100">0</span>
+          </h3>
+        </div>
+        <div class="flex items-center space-x-2">
+          <div class="relative flex-1 sm:w-64">
+            <input type="text" id="searchInput" onkeyup="renderAddresses()" placeholder="Buscar ubicación..." class="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500">
+            <i class="fa-solid fa-search absolute left-2.5 top-2.5 text-slate-400 text-xs"></i>
+          </div>
+          <button onclick="clearAllAddresses()" class="p-2 text-slate-400 hover:text-red-600 rounded-lg text-xs transition-all" title="Borrar todo localmente">
+            <i class="fa-solid fa-trash-can"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Container cards -->
+      <div id="addressesContainer" class="space-y-3">
+        <!-- Rendered via JavaScript -->
+      </div>
+    </section>
+
+  </main>
+
+  <!-- JS Modular Scripts -->
+  <script src="assets/js/modules/mapsParser.js"></script>
+  <script src="assets/js/modules/sheetsSync.js"></script>
+  <script src="assets/js/app.js"></script>
+</body>
+</html>
